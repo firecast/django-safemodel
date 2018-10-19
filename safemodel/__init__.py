@@ -1,0 +1,11 @@
+from .config import (HARD_DELETE, HARD_DELETE_NOCASCADE, SOFT_DELETE, SOFT_DELETE_CASCADE, NO_DELETE)
+
+__all__ = [
+    'HARD_DELETE',
+    'SOFT_DELETE',
+    'SOFT_DELETE_CASCADE',
+    'HARD_DELETE_NOCASCADE',
+    'NO_DELETE'
+]
+
+__version__ = "0.1.0"
