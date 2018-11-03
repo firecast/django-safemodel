@@ -7,7 +7,7 @@ from .config import (HARD_DELETE, HARD_DELETE_NOCASCADE, SOFT_DELETE, SOFT_DELET
 
 class SafeModel(models.Model):
     _safe_policy = SOFT_DELETE
-    _safe_relation_classes = []
+    _soft_cascade_classes = []
 
     deleted = models.BooleanField(default=False)
     deleted_on = models.DateTimeField(editable=False, null=True)
@@ -33,9 +33,10 @@ class SafeModel(models.Model):
             return True
         return False
 
-    def save(self, undelete=True, **kwargs):
-        if self.deleted and undelete:
-            self.undelete()
+    def save(self, keep_deleted=False, **kwargs):
+        if not keep_deleted:
+            self.deleted = False
+            self.deleted_on = None
         super(SafeModel, self).save(**kwargs)
 
     def delete(self, force_policy=None, deleted_on=None, **kwargs):
@@ -51,10 +52,28 @@ class SafeModel(models.Model):
         elif current_policy == SOFT_DELETE:
             self.deleted = True
             self.deleted_on = timezone.now()
-            self.save(undelete=False)
+            super(SafeModel, self).save(**kwargs)
         elif current_policy == SOFT_DELETE_CASCADE:
             deleted_timestamp = timezone.now()
-            pass
+            for related_field in self.related_fields():
+                if related_field.__class__.__name__ in self._soft_cascade_classes:
+                    related_field.delete(deleted_on=deleted_timestamp, **kwargs)
+            self.delete(force_policy=SOFT_DELETE, deleted_on=deleted_timestamp, **kwargs)
+        elif current_policy == NO_DELETE:
+            return
 
     def undelete(self, force_policy=None, deleted_on=None, **kwargs):
-        pass
+        assert self.deleted
+
+        current_policy = force_policy or self._safe_policy
+
+        # Check if the delete was from a cascade of the original delete
+        if deleted_on and self.deleted_on != deleted_on:
+            return
+
+        if current_policy == SOFT_DELETE_CASCADE:
+            for related_field in self.related_fields():
+                if related_field.__class__.__name__ in self._soft_cascade_classes and related_field.deleted:
+                    related_field.undelete(deleted_on=self.deleted_on, **kwargs)
+
+        self.save(**kwargs)
